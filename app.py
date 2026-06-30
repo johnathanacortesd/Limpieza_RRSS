@@ -176,8 +176,13 @@ PREDEFINED_PROFILES = {
             "Fenavi Antioquia\n"
             "Fenavi Valle"
         ),
-        "exclude_authors": "",       # Vacío por defecto para evitar filtrados accidentales
-        "exclude_keywords": ""       # Vacío por defecto para evitar filtrados accidentales
+        "exclude_authors": (
+            "@Fenavideve\n"
+            "Federación Nacional de Avicultura de Venezuela\n"
+            "Fenavi Venezuela\n"
+            "Fenavideve"
+        ),
+        "exclude_keywords": ""
     },
     "Comfenalco Valle Delagente": {
         "own_authors": (
@@ -188,8 +193,8 @@ PREDEFINED_PROFILES = {
             "Caja de Compensación Familiar Comfenalco Valle\n"
             "delagente"
         ),
-        "exclude_authors": "",       # Vacío por defecto para evitar filtrados accidentales
-        "exclude_keywords": ""       # Vacío por defecto para evitar filtrados accidentales
+        "exclude_authors": "",
+        "exclude_keywords": ""
     }
 }
 
