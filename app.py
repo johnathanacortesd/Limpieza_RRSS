@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+import re
 import unicodedata
 from datetime import datetime, time
 
-# ── Fuzzy matching con normalización ──────────────────────────────────────────
+# ── Fuzzy matching con normalización y precisión ─────────────────────────────
 try:
     from rapidfuzz import fuzz
     FUZZY_AVAILABLE = True
@@ -13,35 +14,85 @@ except ImportError:
     FUZZY_AVAILABLE = False
 
 def remove_accents(text: str) -> str:
-    """Remueve tildes y normaliza el texto a minúsculas limpias."""
+    """
+    Normaliza un texto para comparación robusta:
+    - minúsculas y sin espacios sobrantes
+    - sin tildes
+    - separadores comunes de handles en redes (@, _, -, .) convertidos a espacio
+      (ej. '@Fenavi_Oficial' -> 'fenavi oficial', 'Fenavi.Bogota' -> 'fenavi bogota')
+    - espacios múltiples colapsados
+    """
     if not text:
         return ""
     text = str(text).strip().lower()
-    return "".join(
+    text = "".join(
         c for c in unicodedata.normalize('NFD', text)
         if unicodedata.category(c) != 'Mn'
     )
+    text = re.sub(r'[@_\-\.]+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
-def fuzzy_match(value: str, patterns: list, threshold: int = 75) -> bool:
+def _tokenize(text: str) -> list:
+    return text.split() if text else []
+
+def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
+    """
+    Evalúa coincidencia de marcas de manera altamente precisa, tolerando
+    variaciones leves de un mismo Autor entre redes sociales
+    (ej. '@fenavi', 'Fenavi_Oficial', 'Fenavi Bogotá', 'fenavi.colombia').
+
+    Evita falsos positivos entre acrónimos similares (ej. fenavi vs fenalco)
+    mediante un umbral elevado (92%) para patrones o valores cortos (<=7 caracteres).
+    """
     if not value or not patterns:
         return False
     val_norm = remove_accents(value)
+    val_tokens = _tokenize(val_norm)
+
     for p in patterns:
         pat_norm = remove_accents(p)
         if not pat_norm:
             continue
-        # Coincidencia exacta o contención directa
-        if pat_norm in val_norm or val_norm in pat_norm:
+        pat_tokens = _tokenize(pat_norm)
+
+        # 1. Coincidencia exacta directa (cadena completa ya normalizada)
+        if val_norm == pat_norm:
             return True
-        # Coincidencia aproximada si rapidfuzz está disponible
-        if FUZZY_AVAILABLE:
-            score = max(
-                fuzz.ratio(val_norm, pat_norm),
-                fuzz.partial_ratio(val_norm, pat_norm),
-                fuzz.token_sort_ratio(val_norm, pat_norm),
-            )
-            if score >= threshold:
+
+        # 2. Coincidencia por token completo
+        #    Soporta handles con @, _, -, . como separadores tras la normalización
+        if len(pat_tokens) == 1 and pat_tokens[0] in val_tokens:
+            return True
+
+        # 3. Coincidencia de frase completa como subsecuencia contigua de tokens
+        #    (ej. patrón 'fenavi colombia' dentro de 'noticias fenavi colombia hoy')
+        if len(pat_tokens) > 1:
+            n = len(pat_tokens)
+            if any(val_tokens[i:i + n] == pat_tokens for i in range(len(val_tokens) - n + 1)):
                 return True
+
+        # 4. Umbral de seguridad para siglas/palabras cortas (7 caracteres o menos):
+        #    se exige mayor precisión para evitar falsos positivos (ej. fenavi vs fenalco)
+        effective_threshold = threshold
+        if len(pat_norm) <= 7 or len(val_norm) <= 7:
+            effective_threshold = max(threshold, 92)
+
+        # 5. Evaluación de aproximación si está habilitada
+        if FUZZY_AVAILABLE:
+            if len(pat_tokens) == 1:
+                # Comparación token a token: más precisa para acrónimos/marcas
+                # cortas, evita que palabras extra del Autor distorsionen el score
+                for tok in val_tokens:
+                    if fuzz.ratio(tok, pat_norm) >= effective_threshold:
+                        return True
+            else:
+                # token_set_ratio tolera mejor el orden distinto de palabras
+                # y texto adicional alrededor del patrón compuesto
+                score = fuzz.token_set_ratio(val_norm, pat_norm)
+                if score >= effective_threshold:
+                    return True
+
     return False
 
 
@@ -158,19 +209,19 @@ def clean_df(df, own_authors, exclude_authors, exclude_keywords, fuzzy_threshold
     else:
         df["Interacciones"] = 0
 
-    # 10. Clasificación inteligente de Tono (Fuzzy con autores)
+    # 10. Clasificación inteligente de Tono (Usa precise_match) [1]
     def assign_tono(row):
         autor = str(row.get("Autor","") or "")
         sentimiento = str(row.get("Sentimiento","") or "").upper()
-        if fuzzy_match(autor, own_authors, fuzzy_threshold):
+        if precise_match(autor, own_authors, fuzzy_threshold):
             return "Positivo"
         return {"NEUTRAL": "Neutro", "POSITIVE": "Positivo", "NEGATIVE": "Negativo"}.get(sentimiento, "Neutro")
 
     df["Tono"] = df.apply(assign_tono, axis=1)
 
-    # 11. Filtros de exclusión selectivos
+    # 11. Filtros de exclusión selectivos (Usa precise_match) [1]
     if "Autor" in df.columns and exclude_authors:
-        df = df[~df["Autor"].apply(lambda a: fuzzy_match(str(a), exclude_authors, fuzzy_threshold))]
+        df = df[~df["Autor"].apply(lambda a: precise_match(str(a), exclude_authors, fuzzy_threshold))]
 
     if "Título" in df.columns and exclude_keywords:
         df = df[~df["Título"].apply(
@@ -218,6 +269,11 @@ def df_to_excel(df):
             ws.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 60)
             
     return buf.getvalue()
+
+
+# ── Extracción limpia de entradas de texto ──────────────────────────────────
+def parse_lines(raw):
+    return [l.strip() for l in (raw or "").splitlines() if l.strip()]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -449,7 +505,10 @@ with st.sidebar:
     st.markdown('<div class="section-label">Configuración de Marcas</div>', unsafe_allow_html=True)
 
     st.markdown("**Asignación: Tono Positivo**")
-    st.caption("Escribe un autor o palabra clave por línea. Se evaluará de forma flexible (sin distinguir acentos).")
+    st.caption(
+        "Escribe un autor o palabra clave por línea. Se evaluará de forma flexible "
+        "(sin distinguir acentos, mayúsculas, ni separadores como @, _, - o . entre redes)."
+    )
     own_authors_raw = st.text_area(
         "Autores propios",
         height=140,
@@ -482,7 +541,9 @@ with st.sidebar:
     fuzzy_threshold = st.slider(
         "Sensibilidad de coincidencia",
         min_value=50, max_value=100, value=75, step=5,
-        help="Un valor más bajo es más flexible con diferencias de escritura. 100 requiere coincidencia exacta.",
+        help="Un valor más bajo es más flexible con diferencias de escritura. 100 requiere coincidencia exacta. "
+             "Para marcas o siglas de 7 caracteres o menos se aplica automáticamente un mínimo de 92% "
+             "para evitar falsos positivos entre acrónimos parecidos (ej. fenavi vs fenalco).",
     )
     if not FUZZY_AVAILABLE:
         st.markdown(
@@ -491,11 +552,35 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+    st.divider()
+    with st.expander("🔍 Probar una coincidencia"):
+        st.caption("Verifica cómo clasificaría la app un Autor sin necesidad de subir un archivo.")
+        test_value = st.text_input(
+            "Autor o texto de prueba",
+            placeholder="@Fenavi_Oficial",
+            label_visibility="collapsed",
+        )
+        if test_value:
+            _own = parse_lines(own_authors_raw)
+            _excl = parse_lines(exclude_authors_raw)
+            if precise_match(test_value, _own, fuzzy_threshold):
+                st.markdown(
+                    '<div class="callout ok">✔ Coincide con <b>Autores propios</b> → Tono: <b>Positivo</b></div>',
+                    unsafe_allow_html=True,
+                )
+            elif precise_match(test_value, _excl, fuzzy_threshold):
+                st.markdown(
+                    '<div class="callout warn">✘ Coincide con <b>Exclusiones</b> → la fila sería descartada</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="callout">— No coincide con ninguna lista configurada</div>',
+                    unsafe_allow_html=True,
+                )
 
-# ── Extracción limpia de entradas de texto ──────────────────────────────────
-def parse_lines(raw):
-    return [l.strip() for l in (raw or "").splitlines() if l.strip()]
 
+# ── Extracción limpia de entradas de texto (listas para el procesamiento) ───
 own_authors      = parse_lines(own_authors_raw)
 exclude_authors  = parse_lines(exclude_authors_raw)
 exclude_keywords = parse_lines(exclude_kw_raw)
@@ -642,7 +727,7 @@ if uploaded_files:
 
             st.markdown(
                 f'<div class="callout ok">El archivo ha sido procesado de manera correcta. '
-                f'Se han conservado <b>{n_clean}</b> registros válidos de un total original de <b>{n_raw}</b>.</div>',
+                f'Se han conservado <b>{n_clean}</b> registros de un total original de <b>{n_raw}</b>.</div>',
                 unsafe_allow_html=True,
             )
             
