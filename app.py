@@ -130,8 +130,9 @@ def clean_df(df, own_authors, exclude_authors, exclude_keywords, fuzzy_threshold
     # 6. Procesar fechas, horas, franjas y días en español
     if "FechaHora" in df.columns:
         df["FechaHora"] = pd.to_datetime(df["FechaHora"], errors="coerce")
-        df["Fecha"]  = df["FechaHora"].dt.date
-        df["Hora"]   = df["FechaHora"].dt.time
+        # Formato de fecha corta solicitado: DD/MM/YYYY (ej. 23/06/2026)
+        df["Fecha"]  = df["FechaHora"].dt.strftime("%d/%m/%Y").fillna("")
+        df["Hora"]   = df["FechaHora"].dt.strftime("%H:%M:%S").fillna("")
         df["Franja"] = df["FechaHora"].apply(get_franja)
         df["Día"]    = df["FechaHora"].dt.day_name().map(DIAS_ES).fillna("")
         df = df.drop(columns=["FechaHora"])
@@ -220,11 +221,11 @@ def df_to_excel(df):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# CONFIGURACIÓN DE PÁGINA DE STREAMLIT (ESTILO INTERFAZ CLAUDE)
+# CONFIGURACIÓN DE PÁGINA DE STREAMLIT (ESTILO GOOGLE GEMINI)
 # ════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="Procesador de Monitoreo RRSS",
-    page_icon="✦",
+    page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -232,13 +233,13 @@ st.set_page_config(
 # ── Hojas de Estilo CSS Personalizadas ───────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
 
-/* ─ Fondo del canvas general ─ */
+/* Fondo principal */
 .stApp { background: #f8fafc !important; }
 .main .block-container {
     background: #f8fafc;
@@ -246,7 +247,7 @@ html, body, [class*="css"] {
     max-width: 1300px;
 }
 
-/* ─ Menú lateral minimalista (Blanco absoluto) ─ */
+/* Panel lateral (Blanco puro con sombreado tenue) */
 [data-testid="stSidebar"] {
     background: #ffffff !important;
     border-right: 1px solid #e2e8f0 !important;
@@ -255,22 +256,23 @@ html, body, [class*="css"] {
     padding: 2rem 1.5rem !important;
 }
 
-/* Elementos de entrada del Sidebar */
+/* Campos de entrada del Sidebar */
 [data-testid="stSidebar"] textarea,
 [data-testid="stSidebar"] input {
     background: #f1f5f9 !important;
     border: 1px solid #cbd5e1 !important;
     color: #0f172a !important;
-    border-radius: 6px !important;
+    border-radius: 12px !important;
     font-size: 0.85rem !important;
+    padding: 10px !important;
 }
 [data-testid="stSidebar"] textarea:focus,
 [data-testid="stSidebar"] input:focus {
-    border-color: #6366f1 !important;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+    border-color: #8b5cf6 !important;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15) !important;
 }
 
-/* Cabecera del Panel Principal */
+/* Cabecera Estilo Gemini (Gradiente inteligente) */
 .app-header {
     display: flex;
     align-items: center;
@@ -280,16 +282,19 @@ html, body, [class*="css"] {
     margin-bottom: 2rem;
 }
 .app-logo {
-    width: 38px; height: 38px;
-    background: #0f172a;
-    border-radius: 8px;
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 30%, #8b5cf6 70%, #ec4899 100%);
+    border-radius: 14px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px; color: #ffffff; flex-shrink: 0;
+    font-size: 20px; color: #ffffff; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
 }
 .app-header-text h1 {
-    font-size: 1.35rem !important;
+    font-size: 1.45rem !important;
     font-weight: 700 !important;
-    color: #0f172a !important;
+    background: linear-gradient(135deg, #1e293b 30%, #4f46e5 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
     margin: 0 !important; padding: 0 !important;
     letter-spacing: -0.5px;
 }
@@ -303,13 +308,13 @@ html, body, [class*="css"] {
 .section-label {
     font-size: 0.72rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #94a3b8;
-    font-weight: 600;
+    letter-spacing: 1.2px;
+    color: #64748b;
+    font-weight: 700;
     margin-bottom: 8px;
 }
 
-/* Tarjetas de métricas fluidas */
+/* Tarjetas de métricas fluidas de Gemini */
 .metric-row {
     display: flex;
     gap: 12px;
@@ -318,15 +323,16 @@ html, body, [class*="css"] {
 }
 .metric-card {
     flex: 1;
-    min-width: 130px;
+    min-width: 140px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 8px;
+    border-top: 3px solid #8b5cf6; /* Acento en la parte superior */
+    border-radius: 12px;
     padding: 1.2rem;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
 }
 .metric-card .val {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
     font-weight: 700;
     color: #0f172a;
     letter-spacing: -0.5px;
@@ -337,16 +343,16 @@ html, body, [class*="css"] {
     text-transform: uppercase;
     letter-spacing: .5px;
     margin-top: 4px;
-    font-weight: 500;
+    font-weight: 600;
 }
 
 /* Etiquetas visuales en forma de píldoras */
 .pill {
     display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 4px 10px;
+    border-radius: 99px;
     font-size: 0.72rem;
-    font-weight: 500;
+    font-weight: 600;
     margin: 2px;
 }
 .pill-pos { background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; }
@@ -354,54 +360,70 @@ html, body, [class*="css"] {
 /* Mensajes informativos integrados */
 .callout {
     background: #f8fafc;
-    border-left: 3px solid #64748b;
-    border-radius: 0 6px 6px 0;
+    border-left: 4px solid #8b5cf6;
+    border-radius: 0 10px 10px 0;
     padding: 12px 16px;
     font-size: 0.85rem;
     color: #334155;
     margin: 1rem 0;
 }
-.callout.ok { background: #f0fdf4; border-color: #22c55e; color: #166534; }
+.callout.ok { background: #f0fdf4; border-color: #10b981; color: #166534; }
 .callout.warn { background: #fffbeb; border-color: #f59e0b; color: #78350f; }
 
-/* Botón de acción principal */
+/* Botones con estilo gradiente Gemini */
 div.stButton > button {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 0.7rem 2rem !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    letter-spacing: -0.2px;
+    box-shadow: 0 4px 10px rgba(139, 92, 246, 0.2) !important;
+    transition: all 0.2s ease;
+}
+div.stButton > button:hover {
+    opacity: 0.95;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(139, 92, 246, 0.3) !important;
+}
+
+/* Botón de descarga con estilo premium */
+[data-testid="stDownloadButton"] > button {
     background: #0f172a !important;
     color: #ffffff !important;
     border: none !important;
-    border-radius: 6px !important;
-    padding: 0.6rem 1.8rem !important;
-    font-weight: 500 !important;
-    font-size: 0.88rem !important;
-    transition: background 0.15s ease;
-}
-div.stButton > button:hover {
-    background: #1e293b !important;
-}
-
-/* Descargas */
-[data-testid="stDownloadButton"] > button {
-    background: #4f46e5 !important;
-    color: #ffffff !important;
-    border: none !important;
-    border-radius: 6px !important;
-    padding: 0.6rem 1.8rem !important;
+    border-radius: 12px !important;
+    padding: 0.7rem 2rem !important;
     font-weight: 600 !important;
-    font-size: 0.88rem !important;
+    font-size: 0.9rem !important;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1) !important;
+    transition: all 0.2s ease;
 }
 [data-testid="stDownloadButton"] > button:hover {
-    background: #4338ca !important;
+    background: #1e293b !important;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.15) !important;
+}
+
+/* Zonas desplegables y visualizadores */
+[data-testid="stExpander"] {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.01);
 }
 
 .empty-state {
     text-align: center;
     padding: 4rem 2rem;
     background: #ffffff;
-    border-radius: 12px;
+    border-radius: 16px;
     border: 1px dashed #cbd5e1;
     margin-top: 1rem;
 }
-.empty-state .icon { font-size: 1.8rem; margin-bottom: 0.5rem; color: #94a3b8; }
+.empty-state .icon { font-size: 2rem; margin-bottom: 0.5rem; color: #a855f7; }
 .empty-state .title { font-weight: 600; color: #334155; font-size: 0.95rem; }
 .empty-state .sub   { font-size: 0.82rem; color: #64748b; margin-top: 2px; }
 </style>
@@ -511,7 +533,7 @@ with col_guide:
 if uploaded_files:
     st.markdown('<div class="section-label" style="margin-top:2rem;">Acción</div>', unsafe_allow_html=True)
     
-    # Se añade un botón manual para activar la ejecución de la limpieza
+    # Botón manual con estilo acentuado para activar la ejecución de la limpieza
     if st.button("✨ Procesar Datos", use_container_width=True):
         st.session_state["processed_results"] = {}
         
@@ -563,7 +585,7 @@ if uploaded_files:
             neu = int(tono_counts.get("Neutro", 0))
             neg = int(tono_counts.get("Negativo", 0))
 
-            # Renderizado de Tarjetas de Métricas en el Dashboard
+            # Renderizado de Tarjetas de Métricas con estilo Gemini
             st.markdown(f"""
             <div class="metric-row">
               <div class="metric-card">
@@ -574,19 +596,19 @@ if uploaded_files:
                 <div class="val">{n_clean:,}</div>
                 <div class="lbl">Resultados finales</div>
               </div>
-              <div class="metric-card">
+              <div class="metric-card" style="border-top-color: #64748b;">
                 <div class="val">{n_removed:,}</div>
                 <div class="lbl">Filtrados</div>
               </div>
-              <div class="metric-card">
+              <div class="metric-card" style="border-top-color: #10b981;">
                 <div class="val" style="color:#166534">{pos:,}</div>
                 <div class="lbl">Positivo</div>
               </div>
-              <div class="metric-card">
+              <div class="metric-card" style="border-top-color: #64748b;">
                 <div class="val" style="color:#475569">{neu:,}</div>
                 <div class="lbl">Neutro</div>
               </div>
-              <div class="metric-card">
+              <div class="metric-card" style="border-top-color: #ef4444;">
                 <div class="val" style="color:#991b1b">{neg:,}</div>
                 <div class="lbl">Negativo</div>
               </div>
@@ -608,7 +630,7 @@ if uploaded_files:
                     "Interacciones", "Alcance", "Vistas", "Tipo específico"
                 ] if c in df_clean.columns]
                 
-                # Renderizar números con formato de coma/punto de miles legible en pantalla
+                # Renderizar muestra de los datos en formato DataFrame
                 st.dataframe(
                     df_clean[preview_cols].head(50), 
                     use_container_width=True
@@ -619,8 +641,8 @@ if uploaded_files:
             excel_bytes = df_to_excel(df_clean)
 
             st.markdown(
-                f'<div class="callout ok">El archivo ha sido formateado correctamente con el formato numérico '
-                f'estándar. Se han conservado <b>{n_clean}</b> registros válidos de un total original de <b>{n_raw}</b>.</div>',
+                f'<div class="callout ok">El archivo ha sido procesado de manera correcta. '
+                f'Se han conservado <b>{n_clean}</b> registros válidos de un total original de <b>{n_raw}</b>.</div>',
                 unsafe_allow_html=True,
             )
             
