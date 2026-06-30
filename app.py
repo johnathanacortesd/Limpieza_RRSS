@@ -71,7 +71,7 @@ def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
 
     Evita falsos positivos entre acrónimos similares (ej. fenavi vs fenalco)
     o federaciones de distintos países (ej. Colombia vs Venezuela)
-    mediante validación de conflictos geográficos.
+    mediante validación de conflictos geográficos y umbrales dinámicos por longitud de palabra.
     """
     if not value or not patterns:
         return False
@@ -112,14 +112,12 @@ def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
                         return True
 
         # 3. Coincidencia de frase completa como subsecuencia contigua de tokens
-        #    (ej. patrón 'fenavi colombia' dentro de 'noticias fenavi colombia hoy')
         if len(pat_tokens) > 1:
             n = len(pat_tokens)
             if any(val_tokens[i:i + n] == pat_tokens for i in range(len(val_tokens) - n + 1)):
                 return True
 
-        # 4. Umbral de seguridad para siglas/palabras cortas (7 caracteres o menos):
-        #    se exige mayor precisión para evitar falsos positivos (ej. fenavi vs fenalco)
+        # 4. Umbral de seguridad para siglas/palabras cortas del patrón completo (7 caracteres o menos):
         effective_threshold = threshold
         if len(pat_norm) <= 7 or len(val_norm) <= 7:
             effective_threshold = max(threshold, 92)
@@ -130,7 +128,12 @@ def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
                 # Comparación token a token: más precisa para acrónimos/marcas
                 # cortas, evita que palabras extra del Autor distorsionen el score
                 for tok in val_tokens:
-                    if fuzz.ratio(tok, pat_norm) >= effective_threshold:
+                    # Determinar umbral específico basado en el tamaño real del token comparado
+                    tok_threshold = threshold
+                    if len(tok) <= 7 or len(pat_norm) <= 7:
+                        tok_threshold = max(threshold, 92)
+                    
+                    if fuzz.ratio(tok, pat_norm) >= tok_threshold:
                         return True
             else:
                 # token_set_ratio tolera mejor el orden distinto de palabras
@@ -190,8 +193,7 @@ PREDEFINED_PROFILES = {
             "Fenavi Valle"
         ),
         "exclude_authors": (
-            "@Fenavideve\n"
-            "FEDERACIÓN NACIONAL DE AVICULTURA DE VENEZUELA"
+            "FEDERACIÓN NACIONAL DE AVICULTURA DE VENEZUELA (@Fenavideve)"
         ),
         "exclude_keywords": ""
     },
