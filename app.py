@@ -45,6 +45,12 @@ REGIONAL_WORDS = {
     "colombia", "venezuela", "ecuador", "peru", "mexico", "panama", "espana", "usa"
 }
 
+# Sufijos y variaciones típicas unidas a nombres de usuario en redes sociales
+SOCIAL_MODIFIERS = {
+    "colombia", "col", "oficial", "ofic", "co", "valle", "delagente",
+    "oficialcol", "oficialcolombia", "coop", "caja", "nal", "nacional"
+}
+
 def get_regions(tokens: list) -> set:
     """Identifica de manera precisa si dentro de los tokens hay menciones geográficas."""
     regions = set()
@@ -133,7 +139,7 @@ def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
                 if score >= effective_threshold:
                     return True
 
-    return False
+        return False
 
 
 # ── Constantes y Mapeos ──────────────────────────────────────────────────────
