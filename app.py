@@ -37,18 +37,25 @@ def _tokenize(text: str) -> list:
     return text.split() if text else []
 
 
-# Palabras de control regional en Colombia para evitar cruces falsos entre seccionales o marcas independientes
+# Palabras de control geográfico y regional para evitar cruces falsos entre marcas de distintos territorios
 REGIONAL_WORDS = {
     "valle", "antioquia", "santander", "bogota", "quindio", "tolima", 
     "cartagena", "atlantico", "cundinamarca", "huila", "nariño", "meta",
-    "boyaca", "caldas", "risaralda", "cesar", "cordoba", "sucre"
+    "boyaca", "caldas", "risaralda", "cesar", "cordoba", "sucre",
+    "colombia", "venezuela", "ecuador", "peru", "mexico", "panama", "espana", "usa"
 }
 
-# Sufijos y variaciones típicas unidas a nombres de usuario en redes sociales
-SOCIAL_MODIFIERS = {
-    "colombia", "col", "oficial", "ofic", "co", "valle", "delagente",
-    "oficialcol", "oficialcolombia", "coop", "caja", "nal", "nacional"
-}
+def get_regions(tokens: list) -> set:
+    """Identifica de manera precisa si dentro de los tokens hay menciones geográficas."""
+    regions = set()
+    for tok in tokens:
+        for r in REGIONAL_WORDS:
+            if tok == r:
+                regions.add(r)
+            elif len(r) >= 3:
+                if tok.startswith(r) or tok.endswith(r):
+                    regions.add(r)
+    return regions
 
 def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
     """
@@ -57,23 +64,23 @@ def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
     (ej. '@fenavi', 'Fenavi_Oficial', 'Fenavi Bogotá', 'fenavi.colombia').
 
     Evita falsos positivos entre acrónimos similares (ej. fenavi vs fenalco)
-    mediante un umbral elevado (92%) para patrones o valores cortos (<=7 caracteres)
-    y validación selectiva de marcas regionales o sufijos pegados de redes.
+    o federaciones de distintos países (ej. Colombia vs Venezuela)
+    mediante validación de conflictos geográficos.
     """
     if not value or not patterns:
         return False
     val_norm = remove_accents(value)
     val_tokens = _tokenize(val_norm)
-    val_regions = REGIONAL_WORDS.intersection(val_tokens)
+    val_regions = get_regions(val_tokens)
 
     for p in patterns:
         pat_norm = remove_accents(p)
         if not pat_norm:
             continue
         pat_tokens = _tokenize(pat_norm)
-        pat_regions = REGIONAL_WORDS.intersection(pat_tokens)
+        pat_regions = get_regions(pat_tokens)
 
-        # Prevención de falsos positivos si existe un conflicto de regiones explícito (ej. Comfenalco Valle vs Comfenalco Antioquia)
+        # Evitar falsos positivos si hay conflicto geográfico (ej. Colombia vs Venezuela, Valle vs Antioquia)
         if pat_regions and val_regions and pat_regions != val_regions:
             continue
 
@@ -178,9 +185,7 @@ PREDEFINED_PROFILES = {
         ),
         "exclude_authors": (
             "@Fenavideve\n"
-            "Federación Nacional de Avicultura de Venezuela\n"
-            "Fenavi Venezuela\n"
-            "Fenavideve"
+            "FEDERACIÓN NACIONAL DE AVICULTURA DE VENEZUELA"
         ),
         "exclude_keywords": ""
     },
