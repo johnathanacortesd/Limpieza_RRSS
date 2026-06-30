@@ -36,6 +36,20 @@ def remove_accents(text: str) -> str:
 def _tokenize(text: str) -> list:
     return text.split() if text else []
 
+
+# Palabras de control regional en Colombia para evitar cruces falsos entre seccionales o marcas independientes
+REGIONAL_WORDS = {
+    "valle", "antioquia", "santander", "bogota", "quindio", "tolima", 
+    "cartagena", "atlantico", "cundinamarca", "huila", "nariño", "meta",
+    "boyaca", "caldas", "risaralda", "cesar", "cordoba", "sucre", "atlantico"
+}
+
+# Sufijos y variaciones típicas unidas a nombres de usuario en redes sociales
+SOCIAL_MODIFIERS = {
+    "colombia", "col", "oficial", "ofic", "co", "valle", "delagente",
+    "oficialcol", "oficialcolombia", "coop", "caja", "nal", "nacional"
+}
+
 def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
     """
     Evalúa coincidencia de marcas de manera altamente precisa, tolerando
@@ -43,27 +57,46 @@ def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
     (ej. '@fenavi', 'Fenavi_Oficial', 'Fenavi Bogotá', 'fenavi.colombia').
 
     Evita falsos positivos entre acrónimos similares (ej. fenavi vs fenalco)
-    mediante un umbral elevado (92%) para patrones o valores cortos (<=7 caracteres).
+    mediante un umbral elevado (92%) para patrones o valores cortos (<=7 caracteres)
+    y validación selectiva de marcas regionales o sufijos pegados de redes.
     """
     if not value or not patterns:
         return False
     val_norm = remove_accents(value)
     val_tokens = _tokenize(val_norm)
+    val_regions = REGIONAL_WORDS.intersection(val_tokens)
 
     for p in patterns:
         pat_norm = remove_accents(p)
         if not pat_norm:
             continue
         pat_tokens = _tokenize(pat_norm)
+        pat_regions = REGIONAL_WORDS.intersection(pat_tokens)
+
+        # Prevención de falsos positivos si existe un conflicto de regiones explícito (ej. Comfenalco Valle vs Comfenalco Antioquia)
+        if pat_regions and val_regions and pat_regions != val_regions:
+            continue
 
         # 1. Coincidencia exacta directa (cadena completa ya normalizada)
         if val_norm == pat_norm:
             return True
 
-        # 2. Coincidencia por token completo
-        #    Soporta handles con @, _, -, . como separadores tras la normalización
-        if len(pat_tokens) == 1 and pat_tokens[0] in val_tokens:
-            return True
+        # 2. Coincidencia por token completo o con variaciones de redes sociales unidas (ej. 'fenavicolombia' -> patrón 'fenavi')
+        if len(pat_tokens) == 1:
+            pat_single = pat_tokens[0]
+            for tok in val_tokens:
+                if tok == pat_single:
+                    return True
+                # Caso de usuario concatenado al final (ej. "fenavicolombia" empieza por "fenavi" + sufijo "colombia")
+                if tok.startswith(pat_single):
+                    remainder = tok[len(pat_single):]
+                    if remainder in SOCIAL_MODIFIERS or remainder == "":
+                        return True
+                # Caso inverso al inicio (ej. "oficialfenavi")
+                if tok.endswith(pat_single):
+                    prefix = tok[:-len(pat_single)]
+                    if prefix in SOCIAL_MODIFIERS or prefix == "":
+                        return True
 
         # 3. Coincidencia de frase completa como subsecuencia contigua de tokens
         #    (ej. patrón 'fenavi colombia' dentro de 'noticias fenavi colombia hoy')
@@ -120,6 +153,65 @@ FINAL_COLS = [
     "Red Social","Tono","Autor","cumulative_reach","Interacciones",
     "Tipo específico","Alcance","Vistas",
 ]
+
+# Perfiles de Marcas predefinidos con sus respectivos autores e inhabilitadores
+PREDEFINED_PROFILES = {
+    "Personalizado (Ingreso manual)": {
+        "own_authors": "",
+        "exclude_authors": "",
+        "exclude_keywords": ""
+    },
+    "FENAVI (Federación Nacional de Avicultores)": {
+        "own_authors": (
+            "@FenaviColombia\n"
+            "Fenavi Colombia\n"
+            "Federación Nacional de Avicultores de Colombia\n"
+            "Fenavi\n"
+            "@elpoderdelhuevo\n"
+            "El poder del huevo\n"
+            "@Acomerpollo\n"
+            "A comer pollo\n"
+            "Fenavi Bogotá\n"
+            "Fenavi Santander\n"
+            "Fenavi Antioquia\n"
+            "Fenavi Valle"
+        ),
+        "exclude_authors": (
+            "@fenalco\n"
+            "Fenalco\n"
+            "Fenalco Nacional\n"
+            "Asocoflores\n"
+            "Fedegan"
+        ),
+        "exclude_keywords": (
+            "sorteo\n"
+            "concurso\n"
+            "ganadores"
+        )
+    },
+    "Comfenalco Valle Delagente": {
+        "own_authors": (
+            "@ComfenalcoValle\n"
+            "Comfenalco Valle\n"
+            "Comfenalco Valle Delagente\n"
+            "@ComfenalcoValleDelagente\n"
+            "Caja de Compensación Familiar Comfenalco Valle\n"
+            "delagente"
+        ),
+        "exclude_authors": (
+            "Comfenalco Antioquia\n"
+            "Comfenalco Santander\n"
+            "Comfenalco Quindío\n"
+            "Comfenalco Cartagena\n"
+            "Comfenalco Tolima\n"
+            "Comfenalco Huila"
+        ),
+        "exclude_keywords": (
+            "vacantes\n"
+            "empleo"
+        )
+    }
+}
 
 
 # ── Helpers de formato y conversión ──────────────────────────────────────────
@@ -314,13 +406,12 @@ html, body, [class*="css"] {
 
 /* Campos de entrada del Sidebar */
 [data-testid="stSidebar"] textarea,
-[data-testid="stSidebar"] input {
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] select,
+[data-testid="stSidebar"] div[data-baseweb="select"] {
     background: #f1f5f9 !important;
-    border: 1px solid #cbd5e1 !important;
-    color: #0f172a !important;
     border-radius: 12px !important;
     font-size: 0.85rem !important;
-    padding: 10px !important;
 }
 [data-testid="stSidebar"] textarea:focus,
 [data-testid="stSidebar"] input:focus {
@@ -370,7 +461,7 @@ html, body, [class*="css"] {
     margin-bottom: 8px;
 }
 
-/* Tarjetas de métricas fluidas de Gemini */
+/* Tarjetas de métricas fluidas */
 .metric-row {
     display: flex;
     gap: 12px;
@@ -426,7 +517,7 @@ html, body, [class*="css"] {
 .callout.ok { background: #f0fdf4; border-color: #10b981; color: #166534; }
 .callout.warn { background: #fffbeb; border-color: #f59e0b; color: #78350f; }
 
-/* Botones con estilo gradiente Gemini */
+/* Botones con estilo gradiente */
 div.stButton > button {
     background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%) !important;
     color: #ffffff !important;
@@ -504,26 +595,38 @@ st.markdown("""
 with st.sidebar:
     st.markdown('<div class="section-label">Configuración de Marcas</div>', unsafe_allow_html=True)
 
+    # Selector de perfil predefinido
+    selected_profile_name = st.selectbox(
+        "Perfil de marca predefinido",
+        options=list(PREDEFINED_PROFILES.keys()),
+        index=0,
+        help="Carga automática de cuentas y exclusiones oficiales para FENAVI o Comfenalco Valle."
+    )
+    
+    current_profile = PREDEFINED_PROFILES[selected_profile_name]
+
+    st.divider()
     st.markdown("**Asignación: Tono Positivo**")
     st.caption(
         "Escribe un autor o palabra clave por línea. Se evaluará de forma flexible "
         "(sin distinguir acentos, mayúsculas, ni separadores como @, _, - o . entre redes)."
     )
+    
     own_authors_raw = st.text_area(
         "Autores propios",
+        value=current_profile["own_authors"],
         height=140,
         placeholder="@fenavi\nFenavi Bogotá\nfenavi colombia",
-        label_visibility="collapsed",
     )
 
     st.divider()
     st.markdown("**Exclusiones (Autores)**")
-    st.caption("Un autor por línea a descartar.")
+    st.caption("Un autor por línea a descartar del reporte final.")
     exclude_authors_raw = st.text_area(
         "Excluir autores",
+        value=current_profile["exclude_authors"],
         height=90,
         placeholder="@falsonoticias\nBot_Spam",
-        label_visibility="collapsed",
     )
 
     st.divider()
@@ -531,9 +634,9 @@ with st.sidebar:
     st.caption("Una frase o término por línea a descartar.")
     exclude_kw_raw = st.text_area(
         "Excluir palabras clave",
+        value=current_profile["exclude_keywords"],
         height=90,
         placeholder="sorteo nacional\ncomprar seguidores",
-        label_visibility="collapsed",
     )
 
     st.divider()
@@ -558,7 +661,6 @@ with st.sidebar:
         test_value = st.text_input(
             "Autor o texto de prueba",
             placeholder="@Fenavi_Oficial",
-            label_visibility="collapsed",
         )
         if test_value:
             _own = parse_lines(own_authors_raw)
@@ -604,8 +706,8 @@ with col_guide:
     st.markdown('<div class="section-label">Guía de uso</div>', unsafe_allow_html=True)
     st.markdown("""
     <div style="font-size: 0.82rem; color: #475569; line-height: 1.5;">
-        1. Configura tus marcas y reglas de tono en la barra lateral.<br>
-        2. Arrastra y suelta tus archivos Excel.<br>
+        1. Selecciona un perfil predefinido de marca (FENAVI o Comfenalco Valle) o configúralo manualmente en el menú lateral.<br>
+        2. Arrastra y suelta tus archivos Excel de monitoreo.<br>
         3. Presiona el botón <b>"Procesar Datos"</b>.<br>
         4. Comprueba los resultados y descarga los archivos limpios.
     </div>
@@ -670,7 +772,7 @@ if uploaded_files:
             neu = int(tono_counts.get("Neutro", 0))
             neg = int(tono_counts.get("Negativo", 0))
 
-            # Renderizado de Tarjetas de Métricas con estilo Gemini
+            # Renderizado de Tarjetas de Métricas
             st.markdown(f"""
             <div class="metric-row">
               <div class="metric-card">
