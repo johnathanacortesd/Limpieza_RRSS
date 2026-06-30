@@ -41,7 +41,7 @@ def _tokenize(text: str) -> list:
 REGIONAL_WORDS = {
     "valle", "antioquia", "santander", "bogota", "quindio", "tolima", 
     "cartagena", "atlantico", "cundinamarca", "huila", "nariño", "meta",
-    "boyaca", "caldas", "risaralda", "cesar", "cordoba", "sucre", "atlantico"
+    "boyaca", "caldas", "risaralda", "cesar", "cordoba", "sucre"
 }
 
 # Sufijos y variaciones típicas unidas a nombres de usuario en redes sociales
@@ -176,18 +176,8 @@ PREDEFINED_PROFILES = {
             "Fenavi Antioquia\n"
             "Fenavi Valle"
         ),
-        "exclude_authors": (
-            "@fenalco\n"
-            "Fenalco\n"
-            "Fenalco Nacional\n"
-            "Asocoflores\n"
-            "Fedegan"
-        ),
-        "exclude_keywords": (
-            "sorteo\n"
-            "concurso\n"
-            "ganadores"
-        )
+        "exclude_authors": "",       # Vacío por defecto para evitar filtrados accidentales
+        "exclude_keywords": ""       # Vacío por defecto para evitar filtrados accidentales
     },
     "Comfenalco Valle Delagente": {
         "own_authors": (
@@ -198,18 +188,8 @@ PREDEFINED_PROFILES = {
             "Caja de Compensación Familiar Comfenalco Valle\n"
             "delagente"
         ),
-        "exclude_authors": (
-            "Comfenalco Antioquia\n"
-            "Comfenalco Santander\n"
-            "Comfenalco Quindío\n"
-            "Comfenalco Cartagena\n"
-            "Comfenalco Tolima\n"
-            "Comfenalco Huila"
-        ),
-        "exclude_keywords": (
-            "vacantes\n"
-            "empleo"
-        )
+        "exclude_authors": "",       # Vacío por defecto para evitar filtrados accidentales
+        "exclude_keywords": ""       # Vacío por defecto para evitar filtrados accidentales
     }
 }
 
@@ -600,7 +580,7 @@ with st.sidebar:
         "Perfil de marca predefinido",
         options=list(PREDEFINED_PROFILES.keys()),
         index=0,
-        help="Carga automática de cuentas y exclusiones oficiales para FENAVI o Comfenalco Valle."
+        help="Carga automática de cuentas oficiales para FENAVI o Comfenalco Valle."
     )
     
     current_profile = PREDEFINED_PROFILES[selected_profile_name]
