@@ -142,7 +142,7 @@ def precise_match(value: str, patterns: list, threshold: int = 75) -> bool:
                 if score >= effective_threshold:
                     return True
 
-        return False
+    return False
 
 
 # ── Constantes y Mapeos ──────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ def clean_df(df, own_authors, exclude_authors, exclude_keywords, fuzzy_threshold
     def assign_tono(row):
         autor = str(row.get("Autor","") or "")
         sentimiento = str(row.get("Sentimiento","") or "").upper()
-        if precise_match(autor, own_authors, fuzzy_threshold):
+        if bool(precise_match(autor, own_authors, fuzzy_threshold)):
             return "Positivo"
         return {"NEUTRAL": "Neutro", "POSITIVE": "Positivo", "NEGATIVE": "Negativo"}.get(sentimiento, "Neutro")
 
@@ -311,7 +311,7 @@ def clean_df(df, own_authors, exclude_authors, exclude_keywords, fuzzy_threshold
 
     # 11. Filtros de exclusión selectivos (Usa precise_match) [1]
     if "Autor" in df.columns and exclude_authors:
-        df = df[~df["Autor"].apply(lambda a: precise_match(str(a), exclude_authors, fuzzy_threshold))]
+        df = df[~df["Autor"].apply(lambda a: bool(precise_match(str(a), exclude_authors, fuzzy_threshold)))]
 
     if "Título" in df.columns and exclude_keywords:
         df = df[~df["Título"].apply(
